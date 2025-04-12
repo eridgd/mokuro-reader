@@ -47,6 +47,30 @@
 
   $: triggerMethod = $settings.ankiConnectSettings.triggerMethod || 'both';
 
+  let isTouching = false;
+  let touchStartTime = 0;
+
+  function handleTouchStart() {
+    isTouching = true;
+    touchStartTime = Date.now();
+  }
+
+  function handleTouchEnd(event: TouchEvent) {
+    if (!isTouching) return;
+    
+    const touchDuration = Date.now() - touchStartTime;
+    isTouching = false;
+
+    // If it's a long press (more than 500ms), allow text selection
+    if (touchDuration > 500) {
+      const target = event.target as HTMLElement;
+      const selection = window.getSelection();
+      if (selection) {
+        selection.selectAllChildren(target);
+      }
+    }
+  }
+
   async function onUpdateCard(lines: string[]) {
     if ($settings.ankiConnectSettings.enabled) {
       const sentence = lines.join(' ');
@@ -91,6 +115,8 @@
     role="none"
     on:contextmenu={(e) => onContextMenu(e, lines)}
     on:dblclick={(e) => onDoubleTap(e, lines)}
+    on:touchstart={handleTouchStart}
+    on:touchend={handleTouchEnd}
     {contenteditable}
   >
     {#each lines as line}
@@ -109,6 +135,9 @@
     white-space: nowrap;
     border: 1px solid rgba(0, 0, 0, 0);
     z-index: 11;
+    -webkit-user-select: text;
+    user-select: text;
+    touch-action: manipulation;
   }
 
   .textBox:focus,
@@ -126,10 +155,23 @@
     background-color: rgb(255, 255, 255);
     font-weight: var(--bold);
     z-index: 11;
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   .textBox:focus p,
   .textBox:hover p {
-    display: table;
+    display: block;
+  }
+
+  /* Show text boxes on touch devices when being interacted with */
+  @media (hover: none) {
+    .textBox:active {
+      background: rgb(255, 255, 255);
+    }
+    
+    .textBox:active p {
+      display: block;
+    }
   }
 </style>
