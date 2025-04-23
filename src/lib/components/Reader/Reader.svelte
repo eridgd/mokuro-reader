@@ -23,7 +23,8 @@
   import { getCharCount } from '$lib/util/count-chars';
   import QuickActions from './QuickActions.svelte';
   import { beforeNavigate } from '$app/navigation';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
+  import { showSnackbar } from '$lib/util/snackbar';
 
   // TODO: Refactor this whole mess
   export let volumeSettings: VolumeSettings;
@@ -43,6 +44,9 @@
       : 2;
 
   let start: Date;
+  // Three-finger tap detection
+  let activePointers = new Map();
+  let lastTapTime = 0;
 
   function mouseDown() {
     start = new Date();
@@ -153,6 +157,41 @@
   let startY = 0;
   let touchStart: Date;
 
+  // Handle pointer events for three-finger gesture
+  function handlePointerDown(e) {
+    // Store this pointer
+    activePointers.set(e.pointerId, {
+      id: e.pointerId,
+      x: e.clientX,
+      y: e.clientY
+    });
+    
+    // Check if we have exactly 3 pointers
+    if (activePointers.size === 3) {
+      const now = Date.now();
+      if (now - lastTapTime > 500) {
+        lastTapTime = now;
+        // showSnackbar("Three-finger tap detected! Toggling fullscreen...");
+        toggleFullScreen();
+        
+        // Prevent default behavior and stop propagation
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }
+  }
+
+  function handlePointerUp(e) {
+    // Remove this pointer from tracking
+    activePointers.delete(e.pointerId);
+  }
+
+  function handlePointerCancel(e) {
+    // Remove this pointer from tracking
+    activePointers.delete(e.pointerId);
+  }
+
+  // Normal touch handling for swipe gestures
   function handleTouchStart(event: TouchEvent) {
     if ($settings.mobile) {
       const { clientX, clientY } = event.touches[0];
@@ -163,7 +202,7 @@
     }
   }
 
-  function handlePointerUp(event: TouchEvent) {
+  function handleTouchEnd(event: TouchEvent) {
     if ($settings.mobile) {
       debounce(() => {
         if (event.touches.length === 0) {
@@ -225,6 +264,25 @@
     if ($settings.defaultFullscreen) {
       document.documentElement.requestFullscreen();
     }
+    
+    // Add global pointer event handlers directly to document
+    // Using capture phase to get events before they reach other handlers
+    document.addEventListener('pointerdown', handlePointerDown, { capture: true });
+    document.addEventListener('pointerup', handlePointerUp, { capture: true });
+    document.addEventListener('pointercancel', handlePointerCancel, { capture: true });
+    
+    // Disable zoom/double-tap gestures on the entire document
+    document.documentElement.style.touchAction = 'pan-x pan-y';
+  });
+
+  onDestroy(() => {
+    // Remove event listeners
+    document.removeEventListener('pointerdown', handlePointerDown, { capture: true });
+    document.removeEventListener('pointerup', handlePointerUp, { capture: true });
+    document.removeEventListener('pointercancel', handlePointerCancel, { capture: true });
+    
+    // Restore default touch behavior
+    document.documentElement.style.touchAction = '';
   });
 
   beforeNavigate(() => {
@@ -253,7 +311,7 @@
   on:resize={zoomDefault}
   on:keyup={handleShortcuts}
   on:touchstart={handleTouchStart}
-  on:touchend={handlePointerUp}
+  on:touchend={handleTouchEnd}
 />
 <svelte:head>
   <title>{volume?.mokuroData.volume || 'Volume'}</title>
