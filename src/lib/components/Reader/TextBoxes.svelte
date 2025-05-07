@@ -49,8 +49,12 @@
 
   let isTouching = false;
   let touchStartTime = 0;
+  
+  // Custom tap detection
+  let lastTapTime = 0;
+  let lastTapElement: HTMLElement | null = null;
 
-  function handleTouchStart() {
+  function handleTouchStart(event: TouchEvent) {
     isTouching = true;
     touchStartTime = Date.now();
   }
@@ -61,13 +65,45 @@
     const touchDuration = Date.now() - touchStartTime;
     isTouching = false;
 
-    // If it's a long press (more than 500ms), allow text selection
-    if (touchDuration > 500) {
+    // Long press - more than 250ms
+    if (touchDuration > 250) {
       const target = event.target as HTMLElement;
+      const textBox = target.closest('.textBox') as HTMLElement;
+      const selection = window.getSelection();
+      if (selection && textBox) {
+        selection.selectAllChildren(textBox);
+      }
+      return;
+    }
+    
+    // Handle tap detection for custom double-tap
+    const now = Date.now();
+    const target = event.target as HTMLElement;
+    const textBox = target.closest('.textBox') as HTMLElement;
+    
+    if (!textBox) return;
+    
+    // Check if this is a double tap (two taps within 300ms on same element)
+    if (lastTapElement === textBox && (now - lastTapTime) < 300) {
+      // This is our custom double-tap, do the selection
       const selection = window.getSelection();
       if (selection) {
-        selection.selectAllChildren(target);
+        selection.selectAllChildren(textBox);
       }
+      
+      // Handle Anki if enabled
+      const lines = textBox.innerText.split('\n').filter(line => line.trim());
+      if (triggerMethod === 'both' || triggerMethod === 'doubleTap') {
+        setTimeout(() => onUpdateCard(lines), 300);
+      }
+      
+      // Reset tap tracking
+      lastTapTime = 0;
+      lastTapElement = null;
+    } else {
+      // First tap, record it
+      lastTapTime = now;
+      lastTapElement = textBox;
     }
   }
 
@@ -91,13 +127,6 @@
       onUpdateCard(lines);
     }
   }
-
-  function onDoubleTap(event: Event, lines: string[]) {
-    if (triggerMethod === 'both' || triggerMethod === 'doubleTap') {
-      event.preventDefault();
-      onUpdateCard(lines);
-    }
-  }
 </script>
 
 {#each textBoxes as { fontSize, height, left, lines, top, width, writingMode }, index (`textBox-${index}`)}
@@ -114,7 +143,6 @@
     style:writing-mode={writingMode}
     role="none"
     on:contextmenu={(e) => onContextMenu(e, lines)}
-    on:dblclick={(e) => onDoubleTap(e, lines)}
     on:touchstart={handleTouchStart}
     on:touchend={handleTouchEnd}
     {contenteditable}
@@ -173,5 +201,12 @@
     .textBox:active p {
       display: block;
     }
+  }
+
+  .text-content {
+    width: 100%;
+    height: 100%;
+    -webkit-user-select: text;
+    user-select: text;
   }
 </style>
